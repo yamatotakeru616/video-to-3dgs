@@ -3,6 +3,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 import json
 import tempfile
+import shutil
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import logging
@@ -61,10 +62,23 @@ class RealityScanInterface:
 
     def _prepare_temp_images(self, images: List[Dict[str, Any]]) -> Path:
         """一時画像フォルダ準備"""
-        # 実装: 画像を一時フォルダにコピー・整理
-        # NOTE: これはプレースホルダー実装です
         image_dir = self.temp_dir / self.instance_name / 'images'
         image_dir.mkdir(parents=True, exist_ok=True)
+        self.logger.info(f"一時画像フォルダを準備します: {image_dir}")
+
+        copied_images = 0
+        for image_info in images:
+            source_path = Path(image_info.get('path'))
+            if source_path and source_path.exists():
+                try:
+                    shutil.copy(source_path, image_dir)
+                    copied_images += 1
+                except shutil.Error as e:
+                    self.logger.warning(f"画像のコピーに失敗しました: {source_path}, エラー: {e}")
+            else:
+                self.logger.warning(f"元画像が見つかりません: {source_path}")
+
+        self.logger.info(f"{copied_images} / {len(images)} 枚の画像を一時フォルダにコピーしました。")
         return image_dir
 
     def _has_previous_alignment_data(self) -> bool:
@@ -114,9 +128,46 @@ class RealityScanInterface:
 
     def _parse_alignment_result(self, result: subprocess.CompletedProcess) -> Dict[str, Any]:
         """アライメント結果解析"""
-        # 実装: XML/JSONからアライメント結果パース
-        # NOTE: これはプレースホルダー実装です
-        return self._get_empty_alignment_result()
+        xml_path = self.temp_dir / "alignment_result.xml"
+        if not xml_path.exists():
+            self.logger.warning(f"アライメント結果XMLが見つかりません: {xml_path}")
+            return self._get_empty_alignment_result()
+
+        try:
+            tree = ET.parse(xml_path)
+            root = tree.getroot()
+
+            components_data = []
+            for comp_node in root.findall('Component'):
+                images = [img.get('name') for img in comp_node.findall('Image')]
+                reproj_error_node = comp_node.find('ReprojectionError')
+
+                components_data.append({
+                    'id': comp_node.get('id'),
+                    'size': int(comp_node.get('size', 0)),
+                    'reprojection_error': float(reproj_error_node.text) if reproj_error_node is not None else 99.0,
+                    'images': images
+                })
+
+            stats_node = root.find('Stats')
+            total_images = int(stats_node.find('TotalInputImages').text) if stats_node is not None and stats_node.find('TotalInputImages') is not None else 0
+            aligned_images = int(stats_node.find('TotalAlignedImages').text) if stats_node is not None and stats_node.find('TotalAlignedImages') is not None else 0
+
+            alignment_ratio = aligned_images / total_images if total_images > 0 else 0.0
+
+            mean_reprojection_error = components_data[0]['reprojection_error'] if components_data else 99.0
+
+            return {
+                'components': components_data,
+                'total_images': total_images,
+                'alignment_ratio': alignment_ratio,
+                'mean_reprojection_error': mean_reprojection_error,
+                'raw_output_path': str(xml_path)
+            }
+
+        except (ET.ParseError, FileNotFoundError, TypeError, ValueError) as e:
+            self.logger.error(f"アライメント結果の解析に失敗しました: {xml_path}, エラー: {e}")
+            return self._get_empty_alignment_result()
 
     def _get_empty_alignment_result(self) -> Dict[str, Any]:
         """空のアライメント結果を返す"""
