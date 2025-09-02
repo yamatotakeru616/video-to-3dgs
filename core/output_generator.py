@@ -6,6 +6,7 @@ import shutil
 import json
 from typing import Dict, List, Any
 import logging
+import cv2
 
 class OutputGenerator:
     """3D Gaussian Splatting用データ出力クラス"""
@@ -132,8 +133,110 @@ class OutputGenerator:
 
     def _generate_equirectangular_image(self, alignment_result: Dict[str, Any], output_dir: Path) -> str:
         """正距円筒図の画像を生成"""
-        self.logger.info(f"正距円筒図の画像を {output_dir} に生成中... (プレースホルダー)")
-        # ここに正距円筒図の画像を生成する処理を実装します。
-        # 例えば、OpenCVや他のライブラリを使って、入力画像とカメラパラメータから画像を生成します。
-        # 現時点ではプレースホルダーとしてスキップします。
-        return "Skipped (placeholder for equirectangular image generation)"
+        self.logger.info(f"正距円筒図の画像を {output_dir} に生成中...")
+
+        # 1. 必要なデータを抽出
+        components = alignment_result.get('components', [])
+        if not components:
+            self.logger.warning("アライメントされたコンポーネントが見つからないため、正距円筒図を生成できません。")
+            return "Skipped (no components)"
+
+        # 最大のコンポーネントを選択
+        main_component = max(components, key=lambda c: c['image_count'])
+        images_data = main_component.get('images', [])
+        if not images_data:
+            self.logger.warning("コンポーネントに画像情報がないため、正距円筒図を生成できません。")
+            return "Skipped (no images in component)"
+
+        # 2. カメラの内部・外部パラメータと画像パスを準備
+        try:
+            first_image = cv2.imread(images_data[0]['path'])
+            if first_image is None:
+                raise FileNotFoundError(f"画像ファイルが読み込めません: {images_data[0]['path']}")
+            img_h, img_w, _ = first_image.shape
+
+            # 視野角90度を仮定して焦点距離を計算
+            fov_x_rad = np.radians(90)
+            focal_length = (img_w / 2) / np.tan(fov_x_rad / 2)
+            K = np.array([[focal_length, 0, img_w / 2], [0, focal_length, img_h / 2], [0, 0, 1]])
+
+            cameras = []
+            for img_data in images_data:
+                R_cw = np.array(img_data['pose']['rotation'])
+                C_w = np.array([img_data['pose']['tx'], img_data['pose']['ty'], img_data['pose']['tz']])
+                R_wc = R_cw.T
+                t_wc = -R_wc @ C_w
+                cameras.append({'path': img_data['path'], 'R': R_wc, 't': t_wc, 'C': C_w, 'view_dir': R_cw[:, 2]})
+        except (KeyError, IndexError, FileNotFoundError) as e:
+            self.logger.error(f"カメラパラメータの準備中にエラー: {e}")
+            return f"Skipped (error preparing camera data: {e})"
+
+        # 3. 正距円筒図のキャンバスを作成
+        eq_w, eq_h = 4096, 2048
+        equirectangular_image = np.zeros((eq_h, eq_w, 3), dtype=np.uint8)
+
+        # 4. 逆マッピングで画像を生成
+        self.logger.info("逆マッピングによる画像生成を開始...")
+        u_eq, v_eq = np.meshgrid(np.arange(eq_w), np.arange(eq_h))
+
+        theta = (u_eq / eq_w - 0.5) * 2 * np.pi
+        phi = (v_eq / eq_h - 0.5) * np.pi
+
+        # 球面座標から3Dベクトルへ
+        d_world_x = np.cos(phi) * np.sin(theta)
+        d_world_y = -np.sin(phi)
+        d_world_z = np.cos(phi) * np.cos(theta)
+        d_world = np.stack([d_world_x, d_world_y, d_world_z], axis=-1)
+
+        # 各ピクセルに最適なカメラを見つける
+        best_cam_indices = np.zeros((eq_h, eq_w), dtype=int)
+        max_dot = np.full((eq_h, eq_w), -1.0, dtype=float)
+
+        for i, cam in enumerate(cameras):
+            # カメラビュー方向とピクセル方向のドット積を計算
+            dot_product = np.einsum('ij,hwj->hw', cam['view_dir'][np.newaxis, :], d_world)
+            # より最適なカメラであれば更新
+            mask = dot_product > max_dot
+            max_dot[mask] = dot_product[mask]
+            best_cam_indices[mask] = i
+
+        # 5. 各カメラからピクセルをサンプリング
+        self.logger.info("各カメラからのピクセルサンプリングを開始...")
+        for i, cam in enumerate(cameras):
+            mask = best_cam_indices == i
+            if not np.any(mask):
+                continue
+
+            d_world_cam = d_world[mask]
+            d_cam = (cam['R'] @ d_world_cam.T).T
+
+            # 3D点を画像平面に投影
+            x_proj = d_cam[:, 0] / d_cam[:, 2]
+            y_proj = d_cam[:, 1] / d_cam[:, 2]
+
+            u_img = K[0, 0] * x_proj + K[0, 2]
+            v_img = K[1, 1] * y_proj + K[1, 2]
+
+            # 画像境界内のピクセルのみを対象
+            valid_mask = (u_img >= 0) & (u_img < img_w) & (v_img >= 0) & (v_img < img_h)
+            
+            if not np.any(valid_mask):
+                continue
+
+            # 元画像から色をサンプリング (最近傍補間)
+            source_image = cv2.imread(cam['path'])
+            u_img_valid = u_img[valid_mask].astype(int)
+            v_img_valid = v_img[valid_mask].astype(int)
+            colors = source_image[v_img_valid, u_img_valid]
+
+            # キャンバスに描画
+            eq_coords = np.argwhere(mask)
+            eq_coords_valid = eq_coords[valid_mask]
+            equirectangular_image[eq_coords_valid[:, 0], eq_coords_valid[:, 1]] = colors
+
+        # 6. 結果を保存
+        output_path = output_dir / "equirectangular.jpg"
+        self.logger.info(f"正距円筒図を保存中: {output_path}")
+        cv2.imwrite(str(output_path), equirectangular_image)
+
+        return str(output_path)

@@ -9,6 +9,7 @@ import logging
 from datetime import datetime
 import shutil
 import os
+import numpy as np
 
 class RealityScanInterface:
     """RealityScan CLI連携クラス"""
@@ -133,10 +134,6 @@ class RealityScanInterface:
         instance_dir.mkdir(exist_ok=True)
         xml_path = instance_dir / "alignment_result.xml"
 
-        # シンプルなダミーロジック：
-        # 最初の80%の画像を1つのコンポーネントに、残りを未整列とする
-        # 2回目以降の実行では、コンポーネントが1つになるように模倣する
-
         num_images = len(images)
         if self.alignment_data is None: # 初回実行
             num_aligned = int(num_images * 0.8)
@@ -146,36 +143,49 @@ class RealityScanInterface:
             num_components = 1
 
         root = ET.Element('RealityScanProject')
-
-        # Summary
         summary = ET.SubElement(root, 'summary',
                                 total_images=str(num_images),
                                 aligned_images=str(num_aligned),
                                 mean_reprojection_error="1.85")
-
-        # Components
         components_node = ET.SubElement(root, 'components')
         all_image_paths = [Path(img['image_path']).name for img in images]
+
+        def add_images_to_component(comp_node, image_names):
+            num_comp_images = len(image_names)
+            for i, img_name in enumerate(image_names):
+                angle = (i / num_comp_images) * 2 * np.pi
+                radius = 2.0
+                tx, ty, tz = radius * np.cos(angle), 0.0, radius * np.sin(angle)
+                
+                z_axis = -np.array([tx, ty, tz])
+                z_axis /= np.linalg.norm(z_axis)
+                up_vector = np.array([0.0, 1.0, 0.0])
+                x_axis = np.cross(up_vector, z_axis)
+                x_axis /= np.linalg.norm(x_axis)
+                y_axis = np.cross(z_axis, x_axis)
+                rot_mat = np.stack([x_axis, y_axis, z_axis], axis=1)
+                
+                pose_attrs = {'path': str(image_dir / img_name), 'name': img_name,
+                              'tx': str(tx), 'ty': str(ty), 'tz': str(tz)}
+                for row_idx, row in enumerate(rot_mat):
+                    for col_idx, val in enumerate(row):
+                        pose_attrs[f'r{row_idx+1}{col_idx+1}'] = str(val)
+                ET.SubElement(comp_node, 'image', **pose_attrs)
 
         if num_aligned > 0:
             if num_components == 1:
                 comp_images = all_image_paths[:num_aligned]
                 comp_node = ET.SubElement(components_node, 'component', id='0', num_images=str(len(comp_images)), reprojection_error="1.85")
-                for img_name in comp_images:
-                    ET.SubElement(comp_node, 'image', path=str(image_dir / img_name), name=img_name)
-            else: # 2 component dummy
+                add_images_to_component(comp_node, comp_images)
+            else:
                 comp1_count = num_aligned // 2
                 comp2_count = num_aligned - comp1_count
-
                 comp1_images = all_image_paths[:comp1_count]
                 comp_node1 = ET.SubElement(components_node, 'component', id='0', num_images=str(len(comp1_images)), reprojection_error="1.9")
-                for img_name in comp1_images:
-                    ET.SubElement(comp_node1, 'image', path=str(image_dir / img_name), name=img_name)
-
+                add_images_to_component(comp_node1, comp1_images)
                 comp2_images = all_image_paths[comp1_count:num_aligned]
                 comp_node2 = ET.SubElement(components_node, 'component', id='1', num_images=str(len(comp2_images)), reprojection_error="2.1")
-                for img_name in comp2_images:
-                    ET.SubElement(comp_node2, 'image', path=str(image_dir / img_name), name=img_name)
+                add_images_to_component(comp_node2, comp2_images)
 
         tree = ET.ElementTree(root)
         ET.indent(tree, space="\t", level=0)
@@ -206,9 +216,22 @@ class RealityScanInterface:
             comp_images = []
             for img_node in comp_node.findall('image'):
                 img_name = img_node.get('name')
+                
+                pose = {
+                    'tx': float(img_node.get('tx', 0)),
+                    'ty': float(img_node.get('ty', 0)),
+                    'tz': float(img_node.get('tz', 0)),
+                    'rotation': [
+                        [float(img_node.get('r11', 1)), float(img_node.get('r12', 0)), float(img_node.get('r13', 0))],
+                        [float(img_node.get('r21', 0)), float(img_node.get('r22', 1)), float(img_node.get('r23', 0))],
+                        [float(img_node.get('r31', 0)), float(img_node.get('r32', 0)), float(img_node.get('r33', 1))]
+                    ]
+                }
+                
                 comp_images.append({
                     'name': img_name,
-                    'path': img_node.get('path')
+                    'path': img_node.get('path'),
+                    'pose': pose
                 })
                 aligned_image_names.add(img_name)
 
@@ -219,7 +242,6 @@ class RealityScanInterface:
                 'images': comp_images
             })
 
-        # 全画像のリストから未整列の画像を特定
         all_image_files = [p.name for p in (self.temp_dir / self.instance_name / 'images').glob('*.jpg')]
         unaligned_images = [name for name in all_image_files if name not in aligned_image_names]
 
