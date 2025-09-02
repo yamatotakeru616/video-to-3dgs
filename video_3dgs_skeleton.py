@@ -325,13 +325,58 @@ class MainApplication:
     
     def save_settings(self):
         """設定保存"""
-        # 実装: 現在の設定をYAMLファイルに保存
-        pass
-    
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".yaml",
+            filetypes=[("YAML files", "*.yaml *.yml"), ("All files", "*.*")],
+            title="設定を保存"
+        )
+        if not filepath:
+            return
+
+        settings_data = {
+            'person_confidence': self.person_confidence.get(),
+            'area_threshold': self.area_threshold.get(),
+            'target_images': self.target_images.get(),
+            'use_cuda': self.use_cuda.get()
+        }
+
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                yaml.dump(settings_data, f, default_flow_style=False, allow_unicode=True)
+            messagebox.showinfo("成功", f"設定を保存しました:\n{filepath}")
+        except Exception as e:
+            messagebox.showerror("エラー", f"設定の保存に失敗しました:\n{e}")
+
     def load_settings(self):
         """設定読込"""
-        # 実装: YAMLファイルから設定を読込
-        pass
+        filepath = filedialog.askopenfilename(
+            filetypes=[("YAML files", "*.yaml *.yml"), ("All files", "*.*")],
+            title="設定を読み込む"
+        )
+        if not filepath:
+            return
+
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                settings_data = yaml.safe_load(f)
+
+            if not isinstance(settings_data, dict):
+                raise ValueError("無効な設定ファイル形式です。")
+
+            # 必須キーのチェック
+            required_keys = ['person_confidence', 'area_threshold', 'target_images', 'use_cuda']
+            if not all(key in settings_data for key in required_keys):
+                raise ValueError("設定ファイルに必要なキーが不足しています。")
+
+            self.person_confidence.set(settings_data['person_confidence'])
+            self.area_threshold.set(settings_data['area_threshold'])
+            self.target_images.set(settings_data['target_images'])
+            self.use_cuda.set(settings_data['use_cuda'])
+
+            messagebox.showinfo("成功", f"設定を読み込みました:\n{filepath}")
+
+        except Exception as e:
+            messagebox.showerror("エラー", f"設定の読み込みに失敗しました:\n{e}")
     
     def run(self):
         """アプリケーション実行"""
