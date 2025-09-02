@@ -1,0 +1,26 @@
+2025-09-01 21:43:01,472 - core.processing_engine - INFO - 処理開始
+2025-09-01 21:43:01,472 - core.processing_engine - INFO - 動画1/6を処理中: VID_20240910_153555_00_226.mp4
+2025-09-01 21:43:01,472 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_153555_00_226.mp4
+2025-09-01 21:43:01,573 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:43:01,573 - core.processing_engine - INFO - 動画2/6を処理中: VID_20240910_154207_00_227.mp4
+2025-09-01 21:43:01,573 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_154207_00_227.mp4
+2025-09-01 21:43:01,668 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:43:01,668 - core.processing_engine - INFO - 動画3/6を処理中: VID_20240910_154852_00_228.mp4
+2025-09-01 21:43:01,668 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_154852_00_228.mp4
+2025-09-01 21:43:01,763 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:43:01,763 - core.processing_engine - INFO - 動画4/6を処理中: VID_20240910_155511_00_229.mp4
+2025-09-01 21:43:01,763 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_155511_00_229.mp4
+2025-09-01 21:43:01,875 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:43:01,875 - core.processing_engine - INFO - 動画5/6を処理中: VID_20240910_160034_00_230.mp4
+2025-09-01 21:43:01,875 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_160034_00_230.mp4
+2025-09-01 21:43:01,969 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:43:01,969 - core.processing_engine - INFO - 動画6/6を処理中: VID_20240910_160752_00_231.mp4
+2025-09-01 21:43:01,969 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_160752_00_231.mp4
+2025-09-01 21:43:02,064 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:43:02,064 - core.processing_engine - INFO - 初期フレーム抽出完了: 0枚
+2025-09-01 21:43:02,064 - core.processing_engine - INFO - === アライメント反復 1 開始 ===
+2025-09-01 21:43:02,064 - core.realityscan_interface - INFO - RealityScanアライメント開始 - 0枚の画像
+2025-09-01 21:43:02,064 - core.realityscan_interface - WARNING - 画像が0枚のため、アライメントをスキップします。
+2025-09-01 21:43:02,064 - core.processing_engine - INFO - 追加可能な画像がありません
+2025-09-01 21:43:02,064 - core.output_generator - INFO - 3DGSデータセット生成開始: C:\Users\yamat\Desktop\tesut7-04\555
+2025-09-01 21:43:02,064 - core.processing_engine - ERROR - 処理中にエラー: 'OutputGenerator' object has no attribute '_organize_images'

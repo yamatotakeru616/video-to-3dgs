@@ -1,0 +1,4 @@
+2025-09-01 21:23:25,912 - core.processing_engine - INFO - 処理開始
+2025-09-01 21:23:25,912 - core.processing_engine - INFO - 動画1/6を処理中: VID_20240910_153555_00_226.mp4
+2025-09-01 21:23:25,912 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_153555_00_226.mp4
+2025-09-01 21:23:26,246 - core.processing_engine - ERROR - 処理中にエラー: object of type 'NoneType' has no len()

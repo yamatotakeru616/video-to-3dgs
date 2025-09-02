@@ -1,0 +1,24 @@
+2025-09-01 21:31:39,162 - core.processing_engine - INFO - 処理開始
+2025-09-01 21:31:39,162 - core.processing_engine - INFO - 動画1/6を処理中: VID_20240910_153555_00_226.mp4
+2025-09-01 21:31:39,162 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_153555_00_226.mp4
+2025-09-01 21:31:39,269 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:31:39,269 - core.processing_engine - INFO - 動画2/6を処理中: VID_20240910_154207_00_227.mp4
+2025-09-01 21:31:39,269 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_154207_00_227.mp4
+2025-09-01 21:31:39,364 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:31:39,364 - core.processing_engine - INFO - 動画3/6を処理中: VID_20240910_154852_00_228.mp4
+2025-09-01 21:31:39,364 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_154852_00_228.mp4
+2025-09-01 21:31:39,459 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:31:39,459 - core.processing_engine - INFO - 動画4/6を処理中: VID_20240910_155511_00_229.mp4
+2025-09-01 21:31:39,459 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_155511_00_229.mp4
+2025-09-01 21:31:39,571 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:31:39,571 - core.processing_engine - INFO - 動画5/6を処理中: VID_20240910_160034_00_230.mp4
+2025-09-01 21:31:39,571 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_160034_00_230.mp4
+2025-09-01 21:31:39,666 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:31:39,666 - core.processing_engine - INFO - 動画6/6を処理中: VID_20240910_160752_00_231.mp4
+2025-09-01 21:31:39,666 - core.video_extractor - INFO - フレーム抽出開始: VID_20240910_160752_00_231.mp4
+2025-09-01 21:31:39,760 - core.video_extractor - INFO - フレーム抽出完了: 0枚
+2025-09-01 21:31:39,760 - core.processing_engine - INFO - 初期フレーム抽出完了: 0枚
+2025-09-01 21:31:39,760 - core.processing_engine - INFO - === アライメント反復 1 開始 ===
+2025-09-01 21:31:39,760 - core.realityscan_interface - INFO - RealityScanアライメント開始 - 0枚の画像
+2025-09-01 21:31:39,760 - core.realityscan_interface - WARNING - 画像が0枚のため、アライメントをスキップします。
+2025-09-01 21:31:39,760 - core.processing_engine - ERROR - 処理中にエラー: 'ProcessingEngine' object has no attribute '_analyze_alignment_problems'

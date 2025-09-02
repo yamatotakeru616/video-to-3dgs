@@ -1,0 +1,52 @@
+# 処理設定
+processing:
+  target_images_per_video: 330
+  cube_resolution: 1600
+  cuda_enabled: true
+  max_iterations: 10
+  memory_limit_gb: 16
+
+# フレーム抽出設定  
+extraction:
+  base_interval_sec: 3.0
+  min_interval_sec: 1.0
+  max_interval_sec: 8.0
+  direction_offset_range: 15
+  cube_faces: ['front', 'back', 'left', 'right', 'up', 'down']
+
+# YOLO品質フィルタ設定
+yolo:
+  model_name: 'yolov8n.pt'
+  device: 'cuda'
+  filtering:
+    person:
+      confidence_threshold: 0.5
+      area_ratio_threshold: 0.15
+      center_distance_threshold: 0.3
+    enabled_classes: ['person']
+
+# RealityScan設定
+realityscan:
+  executable_path: 'C:\Program Files\Epic Games\RealityScan_2.0\RealityScan.exe'
+  max_instances: 2
+  alignment_qualities: ['draft', 'normal', 'high']
+  stop_conditions:
+    single_component_threshold: 0.95
+    reprojection_error_threshold: 2.0
+    alignment_ratio_threshold: 0.95
+    improvement_threshold: 0.02
+    stagnation_iterations: 3
+
+# 出力設定
+output:
+  generate_colmap: true
+  generate_camera_csv: true  
+  generate_pointcloud: true
+  image_format: 'jpeg'
+  image_quality: 95
+  
+# ログ設定
+logging:
+  level: 'INFO'
+  max_log_files: 10
+  log_rotation_size_mb: 100
