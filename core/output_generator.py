@@ -38,15 +38,14 @@ class OutputGenerator:
         results['pointcloud'] = self._generate_point_cloud(alignment_result, dataset_structure['dense'])
         
         # 4. 画像整理・コピー
-        # The user's provided code assumes the key is 'images', but the processing_engine
-        # passes the whole alignment_result. Let's pass the correct part.
-        # The `run_alignment` in realityscan_interface returns a dict that contains the images.
-        # Let's assume the images are in alignment_result['images'] for now.
         results['images'] = self._organize_images(alignment_result, dataset_structure['images'])
         
         # 5. メタデータ出力
         results['metadata'] = self._generate_metadata(alignment_result, dataset_structure['root'])
         
+        # 6. 正距円筒図の画像を生成
+        results['equirectangular'] = self._generate_equirectangular_image(alignment_result, dataset_structure['root'])
+
         self.logger.info("3DGSデータセット生成完了")
         return {
             'output_path': str(output_path),
@@ -91,14 +90,11 @@ class OutputGenerator:
         """アライメントに使用された画像をimagesフォルダにコピーする"""
         self.logger.info(f"画像を {images_dir} に整理中...")
         
-        # The list of image dictionaries is what we get from video_extractor
-        # and is passed through the processing_engine. It's the top-level object.
-        image_list = alignment_result.get('aligned_images', []) # Assuming this key exists
+        image_list = alignment_result.get('aligned_images', [])
         if not image_list:
-            # Fallback for the case where the key is not present, use the root list if it's a list of dicts
             if isinstance(alignment_result, list):
                  image_list = alignment_result
-            else: # Or maybe it's in the 'images' key from the start
+            else:
                  image_list = alignment_result.get('images', [])
 
         if not image_list or not isinstance(image_list, list):
@@ -123,7 +119,6 @@ class OutputGenerator:
         metadata_path = output_dir / 'metadata.json'
         self.logger.info(f"メタデータを {metadata_path} に出力中...")
         try:
-            # Create a serializable version of the alignment result
             serializable_result = {
                 k: v for k, v in alignment_result.items() 
                 if isinstance(v, (str, int, float, bool, list, dict, type(None)))
@@ -134,3 +129,11 @@ class OutputGenerator:
         except Exception as e:
             self.logger.error(f"メタデータの保存中にエラーが発生しました: {e}")
             return f"Error saving metadata: {e}"
+
+    def _generate_equirectangular_image(self, alignment_result: Dict[str, Any], output_dir: Path) -> str:
+        """正距円筒図の画像を生成"""
+        self.logger.info(f"正距円筒図の画像を {output_dir} に生成中... (プレースホルダー)")
+        # ここに正距円筒図の画像を生成する処理を実装します。
+        # 例えば、OpenCVや他のライブラリを使って、入力画像とカメラパラメータから画像を生成します。
+        # 現時点ではプレースホルダーとしてスキップします。
+        return "Skipped (placeholder for equirectangular image generation)"

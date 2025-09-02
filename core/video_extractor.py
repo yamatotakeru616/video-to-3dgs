@@ -22,7 +22,7 @@ class VideoExtractor:
         }
     
     def extract_adaptive_frames(self, video_path: str, target_count: int, 
-                              quality_filter) -> List[Dict[str, Any]]:
+                              quality_filter, confidence: float, area_threshold: float) -> List[Dict[str, Any]]:
         """適応的フレーム抽出（基本的な実装を追加）"""
         self.logger.info(f"フレーム抽出開始: {Path(video_path).name}")
         
@@ -51,14 +51,14 @@ class VideoExtractor:
             if not ret:
                 break
 
+            # 品質フィルタリングを実行
+            if not quality_filter.is_frame_acceptable(frame, confidence, area_threshold):
+                self.logger.debug(f"フレーム {current_time_sec:.2f}s は品質基準を満たさなかったためスキップします。")
+                current_time_sec += self.extraction_params['base_interval']
+                continue
+
             # ここでは簡単化のため、6方向抽出ではなく正面のフレームのみを保存します
             # 本来は _extract_directional_frames で6枚の画像を生成します
-            
-            # TODO: ここで品質フィルタリングを実行する
-            # valid_frames = self._filter_frames_by_quality(frame, quality_filter)
-            # if not valid_frames:
-            #     current_time_sec += interval
-            #     continue
             
             # 仮実装：全フレームを有効とする
             image_name = f"{Path(video_path).stem}_frame_{frame_count:05d}.jpg"
