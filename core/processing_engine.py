@@ -139,7 +139,7 @@ class ProcessingEngine:
                 break
             
             # 追加画像選定
-            additional_images = self._select_additional_images(alignment_result)
+            additional_images = self._select_additional_images(alignment_result, current_images)
             
             if not additional_images:
                 self.logger.info("追加可能な画像がありません")
@@ -189,19 +189,96 @@ class ProcessingEngine:
         
         return alignment_ratio - component_penalty - error_penalty
     
-    def _select_additional_images(self, alignment_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _select_additional_images(self, alignment_result: Dict[str, Any], all_images: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """追加画像選定"""
         # 実装: コンポーネント分析に基づく追加画像選定
-        problem_areas = self._analyze_alignment_problems(alignment_result)
+        problem_areas = self._analyze_alignment_problems(alignment_result, all_images)
         additional_images = self.video_extractor.extract_targeted_frames(problem_areas)
         
         return additional_images
     
-    def _analyze_alignment_problems(self, alignment_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _analyze_alignment_problems(self, alignment_result: Dict[str, Any], all_images: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """アライメントの問題領域を分析"""
-        # 実装: コンポーネントの接続性やギャップを分析
-        # NOTE: これはプレースホルダー実装です
-        return []
+        self.logger.info("アライメントの問題領域を分析中...")
+        problems = []
+
+        # 画像名とメタデータのマップを作成
+        image_name_to_meta = {Path(img['image_path']).name: img for img in all_images}
+
+        # 1. 未整列画像の分析
+        unaligned_images_meta = []
+        if 'unaligned_images' in alignment_result:
+            for img_name in alignment_result['unaligned_images']:
+                if img_name in image_name_to_meta:
+                    unaligned_images_meta.append(image_name_to_meta[img_name])
+
+        if unaligned_images_meta:
+            # タイムスタンプでソートし、クラスタリングする（単純な時間差で）
+            unaligned_images_meta.sort(key=lambda x: x['timestamp'])
+
+            if unaligned_images_meta:
+                cluster_start_meta = unaligned_images_meta[0]
+                last_ts = cluster_start_meta['timestamp']
+
+                for i in range(1, len(unaligned_images_meta)):
+                    current_meta = unaligned_images_meta[i]
+                    # タイムスタンプの差が5秒以上あれば別のクラスタとみなす
+                    if current_meta['timestamp'] - last_ts > 5.0:
+                        problems.append({
+                            'type': 'unaligned_cluster',
+                            'start_time': cluster_start_meta['timestamp'],
+                            'end_time': last_ts,
+                            'video_source': cluster_start_meta['video_source']
+                        })
+                        cluster_start_meta = current_meta
+                    last_ts = current_meta['timestamp']
+
+                # 最後のクラスタを追加
+                problems.append({
+                    'type': 'unaligned_cluster',
+                    'start_time': cluster_start_meta['timestamp'],
+                    'end_time': last_ts,
+                    'video_source': cluster_start_meta['video_source']
+                })
+            self.logger.info(f"未整列画像のクラスタを{len(problems)}件検出")
+
+        # 2. コンポーネント間のギャップ分析
+        components = alignment_result.get('components', [])
+        if len(components) > 1:
+            self.logger.info(f"{len(components)}個のコンポーネントを検出。ギャップを分析します。")
+
+            component_boundaries = []
+            for comp in components:
+                comp_images_meta = [image_name_to_meta[img['name']] for img in comp['images'] if img['name'] in image_name_to_meta]
+                if not comp_images_meta:
+                    continue
+
+                min_ts = min(img['timestamp'] for img in comp_images_meta)
+                max_ts = max(img['timestamp'] for img in comp_images_meta)
+                video_source = comp_images_meta[0]['video_source'] # 仮定：コンポーネントは単一ビデオに由来
+                component_boundaries.append({'min_ts': min_ts, 'max_ts': max_ts, 'video': video_source})
+
+            # タイムスタンプでソート
+            component_boundaries.sort(key=lambda x: x['min_ts'])
+
+            for i in range(len(component_boundaries) - 1):
+                gap_start = component_boundaries[i]['max_ts']
+                gap_end = component_boundaries[i+1]['min_ts']
+
+                # ギャップが大きい場合（例：1秒以上）
+                if gap_end - gap_start > 1.0:
+                    # ビデオソースが同じ場合にのみギャップを問題とする
+                    if component_boundaries[i]['video'] == component_boundaries[i+1]['video']:
+                        problem = {
+                            'type': 'component_gap',
+                            'start_time': gap_start,
+                            'end_time': gap_end,
+                            'video_source': component_boundaries[i]['video']
+                        }
+                        problems.append(problem)
+                        self.logger.info(f"コンポーネント間のギャップを検出: {gap_start:.2f}s - {gap_end:.2f}s in {Path(problem['video_source']).name}")
+
+        return problems
     
     def _generate_final_output(self, alignment_result: Dict[str, Any], 
                              params: Dict[str, Any]) -> Dict[str, Any]:
