@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from core.processing_engine import ProcessingEngine
 from core.time_estimator import ProcessingTimeEstimator
 from utils.config_manager import ConfigManager
-from utils.logging_utils import setup_logging
+from utils.logging_utils import setup_logging, QueueHandler
 
 class MainApplication:
     """メインGUIアプリケーション"""
@@ -38,7 +38,8 @@ class MainApplication:
         self.log_queue = queue.Queue()
         
         # ログ設定
-        setup_logging(self.log_queue)
+        gui_log_handler = QueueHandler(self.log_queue)
+        setup_logging(log_dir="logs", gui_handler=gui_log_handler)
         
         self.setup_gui()
         self.setup_log_monitor()
