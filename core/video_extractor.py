@@ -93,4 +93,73 @@ class VideoExtractor:
         pass
     
     def extract_targeted_frames(self, problem_areas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        pass
+        """問題領域からターゲットを絞ってフレームを抽出する"""
+        if not problem_areas:
+            return []
+
+        self.logger.info(f"{len(problem_areas)}件の問題領域から追加フレームを抽出します。")
+        additional_frames = []
+
+        # 問題領域をビデオソースごとにグループ化
+        from collections import defaultdict
+        problems_by_video = defaultdict(list)
+        for problem in problem_areas:
+            problems_by_video[problem['video_source']].append(problem)
+
+        # 保存先の一時ディレクトリ
+        output_dir = Path(self.config.get('output_dir', './output')) / 'temp_images'
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # 各ビデオに対して処理
+        for video_path, problems in problems_by_video.items():
+            try:
+                cap = cv2.VideoCapture(video_path)
+                if not cap.isOpened():
+                    self.logger.error(f"動画ファイルを開けませんでした: {video_path}")
+                    continue
+
+                for problem in problems:
+                    start_time = problem['start_time']
+                    end_time = problem['end_time']
+                    duration = end_time - start_time
+
+                    # ギャップの長さに応じて抽出枚数を決定（例: 1秒あたり3枚）
+                    # 最低でも1枚は抽出
+                    num_frames_to_extract = max(1, int(duration * 3))
+
+                    self.logger.info(f"  - Problem ({problem['type']}): {start_time:.2f}s - {end_time:.2f}s in {Path(video_path).name}. Extracting {num_frames_to_extract} frames.")
+
+                    if duration <= 0:
+                        time_points = [start_time]
+                    else:
+                        # ギャップ内に均等に配置
+                        interval = duration / (num_frames_to_extract + 1)
+                        time_points = [start_time + interval * (i + 1) for i in range(num_frames_to_extract)]
+
+                    for t in time_points:
+                        cap.set(cv2.CAP_PROP_POS_MSEC, int(t * 1000))
+                        ret, frame = cap.read()
+
+                        if not ret:
+                            continue
+
+                        # TODO: ここでも品質フィルタリングを適用するのが望ましい
+
+                        # 画像を保存 (ファイル名の衝突を避けるため、タイムスタンプのドットをアンダースコアに置換)
+                        image_name = f"{Path(video_path).stem}_targeted_{t:.3f}s.jpg".replace('.', '_')
+                        image_path = output_dir / image_name
+                        cv2.imwrite(str(image_path), frame)
+
+                        frame_data = {
+                            'video_source': video_path,
+                            'timestamp': t,
+                            'image_path': str(image_path),
+                            'type': 'targeted'
+                        }
+                        additional_frames.append(frame_data)
+            finally:
+                if cap and cap.isOpened():
+                    cap.release()
+
+        self.logger.info(f"ターゲットフレーム抽出完了: {len(additional_frames)}枚")
+        return additional_frames
