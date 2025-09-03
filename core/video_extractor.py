@@ -146,7 +146,8 @@ class VideoExtractor:
                         # TODO: ここでも品質フィルタリングを適用するのが望ましい
 
                         # 画像を保存 (ファイル名の衝突を避けるため、タイムスタンプのドットをアンダースコアに置換)
-                        image_name = f"{Path(video_path).stem}_targeted_{t:.3f}s.jpg".replace('.', '_')
+                        # 画像を保存 (ファイル名の衝突を避けるため、タイムスタンプのドットをアンダースコアに置換)
+                        image_name = f"{Path(video_path).stem}_targeted_{f'{t:.3f}'.replace('.', '_')}s.jpg"
                         image_path = output_dir / image_name
                         cv2.imwrite(str(image_path), frame)
 

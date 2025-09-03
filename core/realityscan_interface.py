@@ -49,9 +49,8 @@ class RealityScanInterface:
         
         # RealityScan実行
         try:
-            # NOTE: 実際の実行はコメントアウトし、ダミーのXMLを生成する処理に置き換え
-            # result = self._execute_realityscan_commands(commands)
-            self._create_dummy_realityscan_output(images, temp_image_dir)
+            # RealityScanのCLIを実行
+            result = self._execute_realityscan_commands(commands)
             # 結果解析
             alignment_result = self._parse_alignment_result()
 
