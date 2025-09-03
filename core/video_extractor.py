@@ -65,6 +65,22 @@ class VideoExtractor:
                 'image_path': str(image_path),
             }
             extracted_frames.append(frame_data)
+            # 360パノラマ（equirectangular）を6面の透視投影に変換して保存
+            try:
+                faces = self._equirectangular_to_cubefaces(frame, face_size=1024)
+                for face_name, face_img in faces.items():
+                    face_filename = f"{Path(video_path).stem}_frame_{frame_count:05d}__face_{face_name}.jpg"
+                    face_path = temp_image_dir / face_filename
+                    cv2.imwrite(str(face_path), face_img)
+                    face_data = {
+                        'video_source': video_path,
+                        'timestamp': current_time_sec,
+                        'image_path': str(face_path),
+                        'face': face_name
+                    }
+                    extracted_frames.append(face_data)
+            except Exception as e:
+                self.logger.warning(f"フェイス画像生成に失敗しました: {e}")
             frame_count += 1
             
             current_time_sec += base_interval
@@ -72,6 +88,52 @@ class VideoExtractor:
         cap.release()
         self.logger.info(f"フレーム抽出完了: {len(extracted_frames)}枚")
         return extracted_frames
+
+    def _equirectangular_to_cubefaces(self, eqp_img: np.ndarray, face_size: int = 1024) -> Dict[str, np.ndarray]:
+        """Equirectangular 画像を6面の透視投影（cube faces）に変換して返す。
+        戻り値は {face_name: image} の辞書。
+        """
+        h, w = eqp_img.shape[:2]
+        faces: Dict[str, np.ndarray] = {}
+
+        face_orients = {
+            'front': (0, 0),
+            'right': (90, 0),
+            'back': (180, 0),
+            'left': (-90, 0),
+            'up': (0, 90),
+            'down': (0, -90)
+        }
+
+        def sph_to_equirect(lon, lat):
+            x = (lon + np.pi) / (2 * np.pi) * (w - 1)
+            y = (np.pi / 2 - lat) / np.pi * (h - 1)
+            return x, y
+
+        # pixel coordinates on face
+        i = np.linspace(-1, 1, face_size)
+        j = np.linspace(-1, 1, face_size)
+        x_cam_base, y_cam_base = np.meshgrid(i, -j)  # y inverted for image coords
+        z_cam_base = np.ones_like(x_cam_base)
+        vec_base = np.stack([x_cam_base, y_cam_base, z_cam_base], axis=-1)
+        vec_base /= np.linalg.norm(vec_base, axis=-1, keepdims=True)
+
+        for name, (yaw_deg, pitch_deg) in face_orients.items():
+            yaw = np.deg2rad(yaw_deg)
+            pitch = np.deg2rad(pitch_deg)
+            Ry = np.array([[np.cos(yaw), 0, np.sin(yaw)], [0, 1, 0], [-np.sin(yaw), 0, np.cos(yaw)]])
+            Rx = np.array([[1, 0, 0], [0, np.cos(pitch), -np.sin(pitch)], [0, np.sin(pitch), np.cos(pitch)]])
+            R = Ry @ Rx
+            vec_rot = vec_base @ R.T
+            lon = np.arctan2(vec_rot[..., 0], vec_rot[..., 2])
+            lat = np.arcsin(np.clip(vec_rot[..., 1], -1.0, 1.0))
+            map_x, map_y = sph_to_equirect(lon, lat)
+            map_x = map_x.astype(np.float32)
+            map_y = map_y.astype(np.float32)
+            face = cv2.remap(eqp_img, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+            faces[name] = face
+
+        return faces
 
     def extract_targeted_frames(self, problem_areas: List[Dict[str, Any]], output_dir: str) -> List[Dict[str, Any]]:
         """問題領域からターゲットを絞ってフレームを抽出する"""

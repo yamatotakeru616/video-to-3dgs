@@ -47,6 +47,10 @@ class StopConditionsConfig:
 class RealityScanConfig:
     executable_path: str = 'RealityScan.exe'
     max_instances: int = 2
+    # タイムアウト（秒）: RealityScan が応答しない場合の待機時間
+    timeout_seconds: int = 600
+    # キューブフェイス画像のみを RealityScan に渡すか
+    use_cube_faces: bool = True
     alignment_qualities: List[str] = field(default_factory=lambda: ['draft', 'normal', 'high'])
     stop_conditions: StopConditionsConfig = field(default_factory=StopConditionsConfig)
 

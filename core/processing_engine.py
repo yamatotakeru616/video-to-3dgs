@@ -117,7 +117,17 @@ class ProcessingEngine:
             self.progress_info['iteration_count'] = iteration_count + 1
             
             # RealityScanアライメント実行
-            alignment_result = self.realityscan.run_alignment(current_images)
+            # 設定に応じてキューブフェイス画像のみを渡す
+            images_to_pass = current_images
+            try:
+                if self.config.realityscan.use_cube_faces:
+                    face_images = [img for img in current_images if img.get('face')]
+                    if face_images:
+                        images_to_pass = face_images
+            except Exception:
+                images_to_pass = current_images
+
+            alignment_result = self.realityscan.run_alignment(images_to_pass)
             
             # 結果評価
             quality_score = self._calculate_quality_score(alignment_result)
