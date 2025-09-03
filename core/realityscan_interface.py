@@ -94,12 +94,12 @@ class RealityScanInterface:
         """アライメントCLIコマンド構築"""
         commands = [
             '-headless',
-            f'-set instanceName={self.instance_name}',
-            f'-addFolder="{image_dir}"',
-            f'-set alignQuality={quality}',
+            '-set', f'instanceName={self.instance_name}',
+            '-addFolder', str(image_dir),
+            '-set', f'alignQuality={quality}',
             '-align',
-            f'-exportXMP="{self.temp_dir / self.instance_name / "alignment_result.xml"}"',
-            f'-exportLatestComponents="{self.temp_dir / self.instance_name / "components"}"'
+            '-exportXMP', str(self.temp_dir / self.instance_name / "alignment_result.xml"),
+            '-exportLatestComponents', str(self.temp_dir / self.instance_name / "components")
         ]
         return commands
 
