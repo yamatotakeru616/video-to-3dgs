@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 import logging
 
+from models.config_models import AppConfig
 from .video_extractor import VideoExtractor
 from .quality_filter import QualityFilter
 from .realityscan_interface import RealityScanInterface
@@ -13,15 +14,15 @@ from .output_generator import OutputGenerator
 class ProcessingEngine:
     """メイン処理エンジン"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: AppConfig):
         self.config = config
         self.logger = logging.getLogger(__name__)
         
         # 各処理モジュール初期化
-        self.video_extractor = VideoExtractor(config)
-        self.quality_filter = QualityFilter(config)
-        self.realityscan = RealityScanInterface(config)
-        self.output_generator = OutputGenerator(config)
+        self.video_extractor = VideoExtractor(self.config)
+        self.quality_filter = QualityFilter(self.config.yolo)
+        self.realityscan = RealityScanInterface(self.config.realityscan)
+        self.output_generator = OutputGenerator(self.config.output)
         
         # 進捗管理
         self.progress_info = {
@@ -34,17 +35,14 @@ class ProcessingEngine:
         
         self.stop_requested = False
     
-    def execute_full_workflow(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_full_workflow(self, selected_videos: List[str], output_dir: str) -> Dict[str, Any]:
         """フルワークフロー実行"""
         try:
             self.logger.info("処理開始")
             self.progress_info['current_phase'] = '初期化中'
             
-            # config にも output_dir を渡して VideoExtractor が参照できるようにする
-            self.config['output_dir'] = params['output_dir']
-
             # 1. 初期フレーム抽出
-            initial_frames = self._extract_initial_frames(params)
+            initial_frames = self._extract_initial_frames(selected_videos, output_dir)
             
             # フレームが1枚も抽出されなかった場合のチェック
             if not initial_frames:
@@ -52,12 +50,12 @@ class ProcessingEngine:
                 raise RuntimeError("フレーム抽出に失敗しました。動画ファイルパスや形式を確認してください。")
 
             # 2. 適応的アライメント処理
-            alignment_result = self._adaptive_alignment_process(initial_frames)
+            alignment_result = self._adaptive_alignment_process(initial_frames, output_dir)
             # alignment_result には抽出したフレーム情報を含める
             alignment_result['images'] = initial_frames
 
             # 3. 最終出力生成
-            output_result = self._generate_final_output(alignment_result, params)
+            output_result = self._generate_final_output(alignment_result, output_dir)
             
             self.logger.info("処理完了")
             return output_result
@@ -66,48 +64,49 @@ class ProcessingEngine:
             self.logger.error(f"処理中にエラー: {str(e)}")
             raise
     
-    def _extract_initial_frames(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _extract_initial_frames(self, selected_videos: List[str], output_dir: str) -> List[Dict[str, Any]]:
         """初期フレーム抽出"""
         self.progress_info['current_phase'] = '初期フレーム抽出中'
         
         all_frames = []
-        target_per_video = params['target_images'] // len(params['videos'])
+        target_per_video = self.config.processing.target_images_per_video // len(selected_videos)
         
         # GUIからのフィルタリング設定を取得
-        confidence = params.get('person_confidence', 0.5)
-        area_threshold = params.get('area_threshold', 0.15)
+        confidence = self.config.yolo.filtering.person.confidence_threshold
+        area_threshold = self.config.yolo.filtering.person.area_ratio_threshold
 
-        for i, video_path in enumerate(params['videos']):
+        for i, video_path in enumerate(selected_videos):
             if self.stop_requested:
                 break
                 
-            self.logger.info(f"動画{i+1}/{len(params['videos'])}を処理中: {Path(video_path).name}")
+            self.logger.info(f"動画{i+1}/{len(selected_videos)}を処理中: {Path(video_path).name}")
             
             frames = self.video_extractor.extract_adaptive_frames(
                 video_path, 
                 target_per_video,
                 self.quality_filter,
                 confidence,
-                area_threshold
+                area_threshold,
+                output_dir
             )
             
             all_frames.extend(frames)
             
             # 進捗更新
-            self.progress_info['phase_progress'] = (i + 1) / len(params['videos']) * 100
+            self.progress_info['phase_progress'] = (i + 1) / len(selected_videos) * 100
         
         self.progress_info['total_images'] = len(all_frames)
         self.logger.info(f"初期フレーム抽出完了: {len(all_frames)}枚")
         
         return all_frames
     
-    def _adaptive_alignment_process(self, initial_frames: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _adaptive_alignment_process(self, initial_frames: List[Dict[str, Any]], output_dir: str) -> Dict[str, Any]:
         """適応的アライメント処理"""
         self.progress_info['current_phase'] = 'アライメント処理中'
         
         current_images = initial_frames
         iteration_count = 0
-        max_iterations = 10
+        max_iterations = self.config.processing.max_iterations
         iteration_history = []
         
         while iteration_count < max_iterations:
@@ -139,7 +138,7 @@ class ProcessingEngine:
                 break
             
             # 追加画像選定
-            additional_images = self._select_additional_images(alignment_result, current_images)
+            additional_images = self._select_additional_images(alignment_result, current_images, output_dir)
             
             if not additional_images:
                 self.logger.info("追加可能な画像がありません")
@@ -158,15 +157,16 @@ class ProcessingEngine:
     def _should_stop_iteration(self, alignment_result: Dict[str, Any], 
                               iteration_history: List[Dict[str, Any]]) -> tuple[bool, str]:
         """反復終了判定"""
+        stop_conditions = self.config.realityscan.stop_conditions
         # 1. 単一コンポーネント達成チェック
         if len(alignment_result['components']) == 1:
             main_component = alignment_result['components'][0]
-            if main_component['image_count'] / alignment_result['total_images'] >= 0.95:
+            if main_component['image_count'] / alignment_result['total_images'] >= stop_conditions.single_component_threshold:
                 return True, "single_component_achieved"
         
         # 2. 品質閾値チェック
-        if (alignment_result['mean_reprojection_error'] <= 2.0 and
-            alignment_result['alignment_ratio'] >= 0.95):
+        if (alignment_result['mean_reprojection_error'] <= stop_conditions.reprojection_error_threshold and
+            alignment_result['alignment_ratio'] >= stop_conditions.alignment_ratio_threshold):
             return True, "quality_threshold_met"
         
         # 3. 収束チェック
@@ -175,7 +175,7 @@ class ProcessingEngine:
                 iteration_history[-i]['quality_score'] - iteration_history[-i-1]['quality_score']
                 for i in range(1, 4)
             ]
-            if all(imp < 0.02 for imp in recent_improvements):
+            if all(imp < stop_conditions.improvement_threshold for imp in recent_improvements):
                 return True, "convergence_detected"
         
         return False, "continue_iteration"
@@ -189,11 +189,11 @@ class ProcessingEngine:
         
         return alignment_ratio - component_penalty - error_penalty
     
-    def _select_additional_images(self, alignment_result: Dict[str, Any], all_images: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _select_additional_images(self, alignment_result: Dict[str, Any], all_images: List[Dict[str, Any]], output_dir: str) -> List[Dict[str, Any]]:
         """追加画像選定"""
         # 実装: コンポーネント分析に基づく追加画像選定
         problem_areas = self._analyze_alignment_problems(alignment_result, all_images)
-        additional_images = self.video_extractor.extract_targeted_frames(problem_areas)
+        additional_images = self.video_extractor.extract_targeted_frames(problem_areas, output_dir)
         
         return additional_images
     
@@ -281,13 +281,13 @@ class ProcessingEngine:
         return problems
     
     def _generate_final_output(self, alignment_result: Dict[str, Any], 
-                             params: Dict[str, Any]) -> Dict[str, Any]:
+                             output_dir: str) -> Dict[str, Any]:
         """最終出力生成"""
         self.progress_info['current_phase'] = '最終出力生成中'
         
         output_result = self.output_generator.generate_3dgs_dataset(
             alignment_result, 
-            params['output_dir']
+            output_dir
         )
         
         self.progress_info['overall_progress'] = 100

@@ -11,15 +11,17 @@ import shutil
 import os
 import numpy as np
 
+from models.config_models import RealityScanConfig
+
 class RealityScanInterface:
     """RealityScan CLI連携クラス"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: RealityScanConfig):
         self.config = config
         self.logger = logging.getLogger(__name__)
         
         # RealityScan設定
-        self.realityscan_exe = config.get('realityscan_executable', 'RealityScan.exe')
+        self.realityscan_exe = self.config.executable_path
         self.temp_dir = Path(tempfile.gettempdir()) / 'video_3dgs_temp'
         self.temp_dir.mkdir(exist_ok=True)
         
@@ -92,12 +94,12 @@ class RealityScanInterface:
         """アライメントCLIコマンド構築"""
         commands = [
             '-headless',
-            f'-setInstanceName {self.instance_name}',
-            f'-addFolder "{image_dir}"',
+            f'-set instanceName={self.instance_name}',
+            f'-addFolder="{image_dir}"',
             f'-set alignQuality={quality}',
             '-align',
-            f'-exportXMP "{self.temp_dir / self.instance_name / "alignment_result.xml"}"',
-            f'-exportLatestComponents "{self.temp_dir / self.instance_name / "components"}"'
+            f'-exportXMP="{self.temp_dir / self.instance_name / "alignment_result.xml"}"',
+            f'-exportLatestComponents="{self.temp_dir / self.instance_name / "components"}"'
         ]
         return commands
 

@@ -14,6 +14,7 @@ from core.processing_engine import ProcessingEngine
 from core.time_estimator import ProcessingTimeEstimator
 from utils.config_manager import ConfigManager
 from utils.logging_utils import setup_logging
+from models.config_models import AppConfig
 
 class MainApplication:
     """メインGUIアプリケーション"""
@@ -25,7 +26,7 @@ class MainApplication:
         
         # 設定管理
         self.config_manager = ConfigManager()
-        self.config = self.config_manager.load_config()
+        self.config: AppConfig = self.config_manager.load_config()
         
         # 処理エンジン
         self.processing_engine = ProcessingEngine(self.config)
@@ -38,7 +39,7 @@ class MainApplication:
         self.log_queue = queue.Queue()
         
         # ログ設定
-        setup_logging(log_queue=self.log_queue)
+        setup_logging(log_queue=self.log_queue, log_level=self.config.logging.level)
         
         self.setup_gui()
         self.setup_log_monitor()
@@ -93,24 +94,24 @@ class MainApplication:
         
         # YOLO設定
         ttk.Label(settings_frame, text="人物検出感度:").grid(row=0, column=0, sticky=tk.W)
-        self.person_confidence = tk.DoubleVar(value=0.5)
+        self.person_confidence = tk.DoubleVar(value=self.config.yolo.filtering.person.confidence_threshold)
         ttk.Scale(settings_frame, from_=0.1, to=0.9, 
                  variable=self.person_confidence, length=200).grid(row=0, column=1, padx=5)
         
         # 面積比閾値
         ttk.Label(settings_frame, text="除外面積比:").grid(row=1, column=0, sticky=tk.W)
-        self.area_threshold = tk.DoubleVar(value=0.15)
+        self.area_threshold = tk.DoubleVar(value=self.config.yolo.filtering.person.area_ratio_threshold)
         ttk.Scale(settings_frame, from_=0.05, to=0.3, 
                  variable=self.area_threshold, length=200).grid(row=1, column=1, padx=5)
         
         # 目標画像数
         ttk.Label(settings_frame, text="初期画像数:").grid(row=2, column=0, sticky=tk.W)
-        self.target_images = tk.IntVar(value=2000)
+        self.target_images = tk.IntVar(value=self.config.processing.target_images_per_video)
         ttk.Entry(settings_frame, textvariable=self.target_images, 
                  width=10).grid(row=2, column=1, sticky=tk.W, padx=5)
         
         # CUDA使用設定
-        self.use_cuda = tk.BooleanVar(value=True)
+        self.use_cuda = tk.BooleanVar(value=self.config.processing.cuda_enabled)
         ttk.Checkbutton(settings_frame, text="CUDA使用", 
                        variable=self.use_cuda).grid(row=3, column=0, sticky=tk.W)
     
@@ -238,30 +239,26 @@ class MainApplication:
         self.execute_button.config(state='disabled')
         self.stop_button.config(state='normal')
         
-        # 処理パラメータ設定
-        processing_params = {
-            'videos': self.selected_videos,
-            'output_dir': self.output_directory.get(),
-            'target_images': self.target_images.get(),
-            'person_confidence': self.person_confidence.get(),
-            'area_threshold': self.area_threshold.get(),
-            'use_cuda': self.use_cuda.get()
-        }
-        
+        # GUIから現在の設定値を取得し、configオブジェクトを更新
+        self.config.processing.target_images_per_video = self.target_images.get()
+        self.config.yolo.filtering.person.confidence_threshold = self.person_confidence.get()
+        self.config.yolo.filtering.person.area_ratio_threshold = self.area_threshold.get()
+        self.config.processing.cuda_enabled = self.use_cuda.get()
+
         # バックグラウンド処理開始
         self.processing_thread = threading.Thread(
             target=self.processing_worker,
-            args=(processing_params,)
+            args=(self.selected_videos, self.output_directory.get())
         )
         self.processing_thread.start()
         
         # 進捗監視開始
         self.start_progress_monitoring()
     
-    def processing_worker(self, params):
+    def processing_worker(self, selected_videos: List[str], output_dir: str):
         """バックグラウンド処理ワーカー"""
         try:
-            result = self.processing_engine.execute_full_workflow(params)
+            result = self.processing_engine.execute_full_workflow(selected_videos, output_dir)
             self.root.after(0, lambda: self.processing_completed(result))
         except Exception as e:
             self.root.after(0, lambda e=e: self.processing_failed(str(e)))

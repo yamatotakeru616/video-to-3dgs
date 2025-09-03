@@ -8,10 +8,12 @@ from typing import Dict, List, Any
 import logging
 import cv2
 
+from models.config_models import OutputConfig
+
 class OutputGenerator:
     """3D Gaussian Splatting用データ出力クラス"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: OutputConfig):
         self.config = config
         self.logger = logging.getLogger(__name__)
     
@@ -29,22 +31,17 @@ class OutputGenerator:
         # 各形式でのデータ出力
         results = {}
         
-        # 1. COLMAP形式出力
-        results['colmap'] = self._generate_colmap_data(alignment_result, dataset_structure['sparse'])
+        if self.config.generate_colmap:
+            results['colmap'] = self._generate_colmap_data(alignment_result, dataset_structure['sparse'])
         
-        # 2. カメラパラメータCSV出力（PostShot用）
-        results['camera_csv'] = self._generate_camera_csv(alignment_result, dataset_structure['root'])
+        if self.config.generate_camera_csv:
+            results['camera_csv'] = self._generate_camera_csv(alignment_result, dataset_structure['root'])
         
-        # 3. 点群PLY出力
-        results['pointcloud'] = self._generate_point_cloud(alignment_result, dataset_structure['dense'])
+        if self.config.generate_pointcloud:
+            results['pointcloud'] = self._generate_point_cloud(alignment_result, dataset_structure['dense'])
         
-        # 4. 画像整理・コピー
         results['images'] = self._organize_images(alignment_result, dataset_structure['images'])
-        
-        # 5. メタデータ出力
         results['metadata'] = self._generate_metadata(alignment_result, dataset_structure['root'])
-        
-        # 6. 正距円筒図の画像を生成
         results['equirectangular'] = self._generate_equirectangular_image(alignment_result, dataset_structure['root'])
 
         self.logger.info("3DGSデータセット生成完了")
@@ -235,8 +232,8 @@ class OutputGenerator:
             equirectangular_image[eq_coords_valid[:, 0], eq_coords_valid[:, 1]] = colors
 
         # 6. 結果を保存
-        output_path = output_dir / "equirectangular.jpg"
+        output_path = output_dir / f"equirectangular.{self.config.image_format}"
         self.logger.info(f"正距円筒図を保存中: {output_path}")
-        cv2.imwrite(str(output_path), equirectangular_image)
+        cv2.imwrite(str(output_path), equirectangular_image, [cv2.IMWRITE_JPEG_QUALITY, self.config.image_quality])
 
         return str(output_path)

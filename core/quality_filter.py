@@ -6,19 +6,20 @@ import numpy as np
 from typing import Dict, List, Any, Tuple
 import logging
 
+from models.config_models import YoloConfig
+
 class QualityFilter:
     """YOLO画像品質フィルタリングクラス"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: YoloConfig):
         self.config = config
         self.logger = logging.getLogger(__name__)
         
         # YOLOモデル初期化
-        model_path = config.get('yolo_model_path', 'yolov8n.pt')
-        self.logger.info(f"YOLOモデルを読み込んでいます: {model_path}")
+        self.logger.info(f"YOLOモデルを読み込んでいます: {self.config.model_name}")
         try:
-            self.model = YOLO(model_path)
-            if torch.cuda.is_available() and self.config.get('use_cuda', True):
+            self.model = YOLO(self.config.model_name)
+            if torch.cuda.is_available() and self.config.device == 'cuda':
                 self.logger.info("CUDAが利用可能です。モデルをGPUに転送します。")
                 self.model.to('cuda')
             else:
