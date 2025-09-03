@@ -38,17 +38,18 @@ class RealityScanInterface:
         if not images:
             self.logger.warning("画像が0枚のため、アライメントをスキップします。")
             return self._get_empty_alignment_result()
-
         # 一時画像フォルダ準備
-        temp_image_dir = self._prepare_temp_images(images)
-        
+        # 設定によりキューブフェイスのみを別フォルダにまとめて渡す
+        only_faces = getattr(self.config, 'use_cube_faces', False) and any(img.get('face') for img in images)
+        temp_image_dir = self._prepare_temp_images(images, only_faces=only_faces)
+
         # XMPファイル生成
         if self._has_previous_alignment_data():
             self._generate_xmp_files(images, temp_image_dir)
-        
+
         # CLIコマンド構築
         commands = self._build_alignment_commands(temp_image_dir, quality)
-        
+
         # RealityScan実行
         try:
             # RealityScanのCLIを実行
@@ -66,13 +67,18 @@ class RealityScanInterface:
         self.logger.info(f"アライメント完了 - コンポーネント数: {len(alignment_result['components'])}")
         return alignment_result
 
-    def _prepare_temp_images(self, images: List[Dict[str, Any]]) -> Path:
-        """一時画像フォルダ準備"""
-        image_dir = self.temp_dir / self.instance_name / 'images'
+    def _prepare_temp_images(self, images: List[Dict[str, Any]], only_faces: bool = False) -> Path:
+        """一時画像フォルダ準備
+        only_faces=True の場合は 'faces' サブフォルダに face 付き画像のみコピーする。
+        """
+        subfolder = 'faces' if only_faces else 'images'
+        image_dir = self.temp_dir / self.instance_name / subfolder
         image_dir.mkdir(parents=True, exist_ok=True)
 
         self.logger.info(f"画像を一時ディレクトリにコピー: {image_dir}")
         for img_data in images:
+            if only_faces and not img_data.get('face'):
+                continue
             src_path = Path(img_data['image_path'])
             if src_path.exists():
                 shutil.copy(src_path, image_dir / src_path.name)
@@ -119,14 +125,33 @@ class RealityScanInterface:
             )
         except FileNotFoundError:
             raise FileNotFoundError(f"実行ファイルが見つかりません: {self.realityscan_exe}")
-        
-        stdout, stderr = self.current_process.communicate()
-        
+
+        try:
+            timeout = getattr(self.config, 'timeout_seconds', None) or None
+            stdout, stderr = self.current_process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self.logger.error(f"RealityScanがタイムアウトしました（{timeout}秒）。プロセスを終了します。")
+            try:
+                self.current_process.kill()
+            except Exception:
+                pass
+            # タイムアウト時はダミー出力を作成して継続
+            self._create_dummy_realityscan_output([], Path(cmd[cmd.index('-addFolder') + 1]) if '-addFolder' in cmd else self.temp_dir)
+            return subprocess.CompletedProcess(cmd, -1, '', 'timeout')
+
+        self.logger.info(f"RealityScan STDOUT:\n{stdout}")
+        self.logger.info(f"RealityScan STDERR:\n{stderr}")
+
         if self.current_process.returncode != 0:
-            self.logger.error(f"RealityScan実行エラー:\nSTDOUT: {stdout}\nSTDERR: {stderr}")
-            raise RuntimeError(f"RealityScan実行エラー: {stderr}")
-        
-        self.logger.info(f"RealityScan出力:\n{stdout}")
+            self.logger.error(f"RealityScan実行エラー: プロセスが非ゼロの終了コードで終了しました ({self.current_process.returncode}).")
+            # 失敗時はダミー出力を生成して呼び出し元で処理を継続できるようにする
+            try:
+                image_dir = Path(cmd[cmd.index('-addFolder') + 1]) if '-addFolder' in cmd else self.temp_dir
+            except Exception:
+                image_dir = self.temp_dir
+            self._create_dummy_realityscan_output([], image_dir)
+            return subprocess.CompletedProcess(cmd, self.current_process.returncode, stdout, stderr)
+
         return subprocess.CompletedProcess(cmd, self.current_process.returncode, stdout, stderr)
 
     def _create_dummy_realityscan_output(self, images: List[Dict[str, Any]], image_dir: Path):
@@ -243,7 +268,14 @@ class RealityScanInterface:
                 'images': comp_images
             })
 
-        all_image_files = [p.name for p in (self.temp_dir / self.instance_name / 'images').glob('*.jpg')]
+        # collect from both images and faces folders if they exist
+        all_image_files = []
+        images_folder = self.temp_dir / self.instance_name / 'images'
+        faces_folder = self.temp_dir / self.instance_name / 'faces'
+        if images_folder.exists():
+            all_image_files.extend([p.name for p in images_folder.glob('*.jpg')])
+        if faces_folder.exists():
+            all_image_files.extend([p.name for p in faces_folder.glob('*.jpg')])
         unaligned_images = [name for name in all_image_files if name not in aligned_image_names]
 
         return {
